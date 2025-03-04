@@ -667,13 +667,18 @@ function render!(scene, ::typeof(BodyShape), sys, sol, t)
         shapemesh = FileIO.load(shapepath)
         m = mesh!(scene, shapemesh; color, specular = Vec3f(1.5))
 
-        @views on(t) do t
-            Ta = T(t)*Tshape
+        function apply_transform!(m, t)
+            Ta = T(t) * Tshape
             r1 = Point3f(Ta[1:3, 4])
             q = Rotations.QuatRotation(Ta[1:3, 1:3]).q
             Q = Makie.Quaternionf(q.v1, q.v2, q.v3, q.s)
             Makie.transform!(m; translation=r1, rotation=Q, scale)
         end
+
+        @views on(t) do t
+            apply_transform!(m, t)
+        end
+        apply_transform!(m, 0) 
     end
 
     # thing = @lift begin
