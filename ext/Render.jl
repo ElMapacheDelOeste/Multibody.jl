@@ -264,17 +264,16 @@ function default_scene(x,y,z; lookat=Vec3f(0,0,0),up=Vec3f(0,1,0),show_axis=fals
         # scene = LScene(fig[1, 1], scenekw = (lights = [DirectionalLight(RGBf(1, 1, 1), Vec3f(-1, 0, 0))],)).scene # This causes a black background for CairoMakie, issue link above
         scene = LScene(fig[1, 1])#.scene
     # end
-    # cam3d!(scene, center=true)
-    @info "Setting up camera"
     cam3d!(scene, center=true, projectiontype=Makie.Orthographic)
 
     # scene.scene.camera.view[] = [
     #     R [x,y,z]; 0 0 0 1
     # ]
-    # camc = cameracontrols(scene.scene)
-    # update_cam!(scene.scene, camc, Vec3f(x, y, z), Vec3f(lookat), Vec3f(up))
+    camc = cameracontrols(scene.scene)
+    update_cam!(scene.scene, camc, Vec3f(x, y, z), Vec3f(lookat), Vec3f(up))
+
     fig.current_axis.x.show_axis[] = show_axis
-    scene, fig
+    scene, fig, camc
 end
 
 function default_framerate(filename)
@@ -312,7 +311,7 @@ function render(model, sol,
     elseif cache
         sol = CacheSol(model, sol)
     end
-    scene, fig = default_scene(x,y,z; lookat,up,show_axis, size)
+    scene, fig, camc = default_scene(x,y,z; lookat,up,show_axis, size)
     if timevec === nothing
         timevec = range(sol.t[1], sol.t[end]*timescale, step=1/framerate)
     end
@@ -358,7 +357,7 @@ function render(model, sol,
         end
     end
 
-    fn, scene, fig
+    fn, scene, fig, camc
 end
 
 function render(model, sol, time::Real;
@@ -384,7 +383,7 @@ function render(model, sol, time::Real;
     # fig = Figure()
     # scene = LScene(fig[1, 1]).scene
     # cam3d!(scene)
-    scene, fig = default_scene(x,y,z; size, kwargs...)
+    scene, fig, camc = default_scene(x,y,z; size, kwargs...)
     # mesh!(scene, Rect3f(Vec3f(-5, -3.6, -5), Vec3f(10, 0.1, 10)), color=:gray) # Floor
 
     steps = range(sol.t[1], sol.t[end], length=3000)
@@ -411,7 +410,7 @@ function render(model, sol, time::Real;
             Makie.lines!(scene, points)
         end
     end
-    fig, t
+    fig, t, camc, scene
 end
 
 function Multibody.loop_render(model, sol; timescale = 1.0, framerate = 30, max_loop = 5, kwargs...)
