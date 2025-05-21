@@ -181,7 +181,7 @@ Return a function of `t` that returns the transpose of the rotation-matrix part 
 
 See also [`get_rot`](@ref)
 """
-function get_rot_fun(sol, frame)
+function Multibody.get_rot_fun(sol, frame)
     syms = vec(ori(frame).R.mat')
     getter = getu(sol, syms)
     p = ModelingToolkit.parameter_values(sol)
@@ -197,7 +197,7 @@ end
 
 Return a function of `t` that returns `syms` from the solution.
 """
-function get_fun(sol, syms)
+function Multibody.get_fun(sol, syms)
     getter = getu(sol, syms)
     p = ModelingToolkit.parameter_values(sol)
     function (t)
@@ -215,7 +215,7 @@ Return a function of `t` that returns the transformation matrix from frame, wher
 
 See also [`get_frame`](@ref)
 """
-function get_frame_fun(sol, frame)
+function Multibody.get_frame_fun(sol, frame)
     R = get_rot_fun(sol, frame)
     tr = get_fun(sol, collect(frame.r_0))
     function (t)

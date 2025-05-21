@@ -13,7 +13,7 @@ using SparseArrays
 using StaticArrays
 export Rotational, Translational
 
-export render, render!
+export render, render!, get_fun, get_rot_fun, get_frame_fun
 export subs_constants
 
 """
@@ -216,6 +216,10 @@ mesh!(scene, thing; style...)
 A boolean indicating whether or not the component performed any rendering. Typically, all custom methods of this function should return `true`, while the default fallback method is the only one returning false.
 """
 function render! end
+
+function get_fun end
+function get_rot_fun end
+function get_frame_fun end
 
 """
     urdf2multibody(filename::AbstractString; extras=false, out=nothing, worldconnection = :rigid)
