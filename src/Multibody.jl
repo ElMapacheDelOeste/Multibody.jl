@@ -281,7 +281,11 @@ function at_variables_t(args...; default = nothing, state_priority = nothing)
 end
 
 encode(s) = Float64.(codeunits(s)) # Used to store strings as vectors of floats in parameters. useful for providing paths to shapefiles for 3D rendering
-decode(s) = String(UInt8.(s))
+function decode(s)
+    # Remove trailing zeros (NULs)
+    trimmed = s[1:findlast(x -> x != 0, s)]
+    return String(UInt8.(trimmed))
+end
 
 # using ModelingToolkit.SciMLBase
 # import SymbolicIR: InitialType
