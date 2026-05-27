@@ -380,10 +380,10 @@ This component has a single frame, `frame_a`. To represent bodies with more than
     vars = @variables begin
         r_0(t)[1:3]=r_0, [state_priority = state_priority+isroot, description = "Position vector from origin of world frame to origin of frame_a"]
         v_0(t)[1:3]=v_0, [state_priority = state_priority+isroot, description = "Absolute velocity of frame_a, resolved in world frame (= D(r_0))"]
-        a_0(t)[1:3], [description = "Absolute acceleration of frame_a resolved in world frame (= D(v_0))"]
+        a_0(t)[1:3], [guess=zeros(3), description = "Absolute acceleration of frame_a resolved in world frame (= D(v_0))"]
         g_0(t)[1:3], [description = "gravity acceleration"]
         w_a(t)[1:3]=w_a, [state_priority = isroot ? quat ? state_priority : -1 : 0, description = "Absolute angular velocity of frame_a resolved in frame_a"]
-        z_a(t)[1:3], [description = "Absolute angular acceleration of frame_a resolved in frame_a"]
+        z_a(t)[1:3], [guess=zeros(3), description = "Absolute angular acceleration of frame_a resolved in frame_a"]
     end
 
     pars = @parameters begin
@@ -421,7 +421,7 @@ This component has a single frame, `frame_a`. To represent bodies with more than
             Ra = ori(frame_a, false)
             @variables phi(t)[1:3]=phi [state_priority = 10, description = "Euler angles"]
             @variables phid(t)[1:3]=phid [state_priority = 10]
-            @variables phidd(t)[1:3] [state_priority = 0]
+            @variables phidd(t)[1:3] [guess=zeros(3), state_priority = 0]
             append!(vars, [phi, phid, phidd])
             ar = axes_rotations(sequence, phi, phid)
             Equation[
