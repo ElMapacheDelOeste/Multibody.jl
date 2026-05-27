@@ -18,7 +18,7 @@ It is not possible to connect other components, such as a body with mass propert
 - `color`: Color of the joint in animations (RGBA)
 """
 @component function SphericalSpherical(; name, state = false, isroot = true, iscut=false, w_rel_a_fixed = false,
-                    r_0 = [0,0,0],
+                    r_0 = state ? [0,0,0] : nothing,
                    color = [1, 1, 0, 1],
                    m = 0,
                    radius = 0.1,
@@ -37,24 +37,18 @@ It is not possible to connect other components, such as a body with mass propert
     #     sequence[1:3] = sequence
     # end
 
-    @variables f_rod(t), [description="Constraint force in direction of the rod (positive on frame_a, when directed from frame_a to frame_b)";]
-    @variables rRod_0(t)[1:3]=r_0, [description="Position vector from frame_a to frame_b resolved in world frame";]
-    @variables rRod_a(t)[1:3], [description="Position vector from frame_a to frame_b resolved in frame_a";]
-    @variables eRod_a(t)[1:3], [description="Unit vector in direction from frame_a to frame_b, resolved in frame_a";]
-    @variables r_cm_0(t)[1:3], [description="Dummy if m==0, or position vector from world frame to mid-point of rod, resolved in world frame";]
-    @variables v_cm_0(t)[1:3], [description="First derivative of r_cm_0";]
-    @variables f_cm_a(t)[1:3], [description="Dummy if m==0, or inertial force acting at mid-point of rod due to mass point acceleration, resolved in frame_a";]
-    @variables f_cm_e(t)[1:3], [description="Dummy if m==0, or projection of f_cm_a onto eRod_a, resolved in frame_a";]
-    @variables f_b_a1(t)[1:3], [description="Force acting at frame_b, but without force in rod, resolved in frame_a";]
+    vars = @variables begin
+        f_rod(t), [description="Constraint force in direction of the rod (positive on frame_a, when directed from frame_a to frame_b)"]
+        (rRod_0(t)[1:3]=r_0), [description="Position vector from frame_a to frame_b resolved in world frame"]
+        rRod_a(t)[1:3], [description="Position vector from frame_a to frame_b resolved in frame_a"]
+        eRod_a(t)[1:3], [description="Unit vector in direction from frame_a to frame_b, resolved in frame_a"]
+        r_cm_0(t)[1:3], [description="Dummy if m==0, or position vector from world frame to mid-point of rod, resolved in world frame"]
+        v_cm_0(t)[1:3], [description="First derivative of r_cm_0"]
+        f_cm_a(t)[1:3], [description="Dummy if m==0, or inertial force acting at mid-point of rod due to mass point acceleration, resolved in frame_a"]
+        f_cm_e(t)[1:3], [description="Dummy if m==0, or projection of f_cm_a onto eRod_a, resolved in frame_a"]
+        f_b_a1(t)[1:3], [description="Force acting at frame_b, but without force in rod, resolved in frame_a"]
+    end
 
-    rRod_0 = collect(rRod_0)
-    rRod_a = collect(rRod_a)
-    eRod_a = collect(eRod_a)
-    r_cm_0 = collect(r_cm_0)
-    v_cm_0 = collect(v_cm_0)
-    f_cm_a = collect(f_cm_a)
-    f_cm_e = collect(f_cm_e)
-    f_b_a1 = collect(f_b_a1)
     rodlength = _norm(r_0)
     constraint_residue = rRod_0'rRod_0 - rodlength^2
 
@@ -62,21 +56,21 @@ It is not possible to connect other components, such as a body with mass propert
     eqs = [
         # Determine relative position vector between the two frames
   if kinematic_constraint
-    rRod_0 .~ transpose(ori(frame_b).R)*(ori(frame_b)*collect(frame_b.r_0)) - transpose(ori(frame_a).R)*(ori(frame_a)*collect(frame_a.r_0))
+    rRod_0 ~ transpose(ori(frame_b).R)*(ori(frame_b)*frame_b.r_0) - transpose(ori(frame_a).R)*(ori(frame_a)*frame_a.r_0)
   else
-    rRod_0 .~ frame_b.r_0 - frame_a.r_0
+    rRod_0 ~ frame_b.r_0 - frame_a.r_0
   end
 
   #rRod_0 = frame_b.r_0 - frame_a.r_0;
-  rRod_a .~ resolve2(ori(frame_a), rRod_0)
-  eRod_a .~ rRod_a/rodlength
+  rRod_a ~ resolve2(ori(frame_a), rRod_0)
+  eRod_a ~ rRod_a/rodlength
 
   # Constraint equation
   constraint_residue ~ 0
 
   # Cut-torques at frame_a and frame_b
-  frame_a.tau .~ zeros(3)
-  frame_b.tau .~ zeros(3)
+  frame_a.tau ~ zeros(3)
+  frame_b.tau ~ zeros(3)
 
   #= Force and torque balance of rod
      - Kinematics for center of mass CM of mass point
@@ -102,30 +96,29 @@ It is not possible to connect other components, such as a body with mass propert
 
     # f_b_a1 is needed in aggregation joints to solve kinematic loops analytically
   if m > 0
-    [r_cm_0 .~ frame_a.r_0 + rRod_0/2;
-    v_cm_0 .~ D.(r_cm_0);
-    f_cm_a .~ m*resolve2(ori(frame_a), D.(v_cm_0) - gravity_acceleration(r_cm_0))
-    f_cm_e .~ (f_cm_a'eRod_a)*eRod_a
-    frame_a.f .~ (f_cm_a - f_cm_e)./2 + f_rod*eRod_a
-    f_b_a1 .~ (f_cm_a + f_cm_e)./2
-    frame_b.f .~ resolve_relative(f_b_a1 - f_rod*eRod_a, ori(frame_a),
+    [r_cm_0 ~ frame_a.r_0 + rRod_0/2;
+    v_cm_0 ~ D(r_cm_0);
+    f_cm_a ~ m*resolve2(ori(frame_a), D(v_cm_0) - gravity_acceleration(r_cm_0))
+    f_cm_e ~ (f_cm_a'eRod_a)*eRod_a
+    frame_a.f ~ (f_cm_a - f_cm_e)./2 + f_rod*eRod_a
+    f_b_a1 ~ (f_cm_a + f_cm_e)./2
+    frame_b.f ~ resolve_relative(f_b_a1 - f_rod*eRod_a, ori(frame_a),
       ori(frame_b));
     ]
   else
-    [r_cm_0 .~ zeros(3);
-    v_cm_0 .~ zeros(3);
-    f_cm_a .~ zeros(3);
-    f_cm_e .~ zeros(3);
-    f_b_a1 .~ zeros(3);
-    frame_a.f .~ f_rod*eRod_a;
-    frame_b.f .~ -resolve_relative(frame_a.f, ori(frame_a), ori(frame_b));
+    [r_cm_0 ~ zeros(3);
+    v_cm_0 ~ zeros(3);
+    f_cm_a ~ zeros(3);
+    f_cm_e ~ zeros(3);
+    f_b_a1 ~ zeros(3);
+    frame_a.f ~ f_rod*eRod_a;
+    frame_b.f ~ -resolve_relative(frame_a.f, ori(frame_a), ori(frame_b));
     ]
   end
     ]
 
 
-    sys = extend(ODESystem(eqs, t; name=:nothing), ptf)
-    add_params(sys, pars; name)
+    extend(System(eqs, t, vars, pars; name), ptf)
 end
 
 """
@@ -164,7 +157,7 @@ In complex multibody systems with closed loops this may help to simplify the sys
         color[1:4] = color, [description = "color of the joint in animations (RGBA)"]
     end
     @unpack frame_a, frame_b = ptf
-    @variables begin (r_rel_a(t)[1:3] = zeros(3)),
+    vars = @variables begin (r_rel_a(t)[1:3] = zeros(3)),
                      [
                          description = "Position vector from origin of frame_a to origin of frame_b, resolved in frame_a",
                      ] end
@@ -189,14 +182,13 @@ In complex multibody systems with closed loops this may help to simplify the sys
         else
             frame_a.f[3] ~ 0
         end
-        r_rel_a .~ resolve2(ori(frame_a), frame_b.r_0 - frame_a.r_0);
-        zeros(3) .~ collect(frame_b.tau);
-        collect(frame_b.f) .~ -resolve2(Rrel, frame_a.f);
-        zeros(3) .~ collect(frame_a.tau) + resolve1(Rrel, frame_b.tau) - cross(r_rel_a, frame_a.f);
+        r_rel_a ~ resolve2(ori(frame_a), frame_b.r_0 - frame_a.r_0);
+        zeros(3) ~ frame_b.tau;
+        frame_b.f ~ -resolve2(Rrel, frame_a.f);
+        zeros(3) ~ frame_a.tau + resolve1(Rrel, frame_b.tau) - cross(r_rel_a, frame_a.f);
     ]
 
-    sys = extend(ODESystem(eqs, t; name=:nothing), ptf)
-    add_params(sys, pars; name)
+    extend(System(eqs, t, vars, pars; name), ptf)
 end
 
 """
@@ -250,16 +242,16 @@ In systems without closed loops the use of this implicit joint does not make sen
         else
             frame_a.f[3] ~ 0
         end
-        r_rel_a .~ resolve2(ori(frame_a), frame_b.r_0 - frame_a.r_0)
-        zeros(3) .~ collect(frame_a.tau) .+ resolve1(Rrel, frame_b.tau) .+ cross(r_rel_a, resolve1(Rrel, frame_b.f))
-        zeros(3) .~ resolve1(Rrel, frame_b.f) + collect(frame_a.f)
-        # orientation_constraint(ori(frame_a), ori(frame_b)) .~ 0
-        residue(ori(frame_a), ori(frame_b)) .~ 0
+        r_rel_a ~ resolve2(ori(frame_a), frame_b.r_0 - frame_a.r_0)
+        zeros(3) ~ frame_a.tau + resolve1(Rrel, frame_b.tau) + cross(r_rel_a, resolve1(Rrel, frame_b.f))
+        zeros(3) ~ resolve1(Rrel, frame_b.f) + frame_a.f
+        # orientation_constraint(ori(frame_a), ori(frame_b)) ~ 0
+        residue(ori(frame_a), ori(frame_b)) ~ 0
     ]
 
     Main.eqs = eqs
 
-    sys = extend(ODESystem(eqs, t, collect(r_rel_a), pars; name), ptf)
+    sys = extend(System(eqs, t, collect(r_rel_a), pars; name), ptf)
 end
 
 
@@ -339,7 +331,7 @@ This joint aggregation can be used in cases where in reality a rod with spherica
         render = render, [description="Whether or not to render the joint in animations"]
     end
 
-    pars = collect_all(pars)
+    # pars = collect_all(pars)
 
     vars = @variables begin
         f_rod(t), [description="Constraint force in direction of the rod (positive on frame_a, when directed from frame_a to frame_b)"]
@@ -348,14 +340,14 @@ This joint aggregation can be used in cases where in reality a rod with spherica
         # e3_ia(t)[1:3], [description="Unit vector perpendicular to eRod_ia and e2_ia, resolved in frame_ia"]
         f_b_a1(t)[1:3], [description="frame_b.f without f_rod part, resolved in frame_a (needed for analytic loop handling)"]
         eRod_a(t)[1:3], [description="Unit vector in direction of rRod_a, resolved in frame_a (needed for analytic loop handling)"]
-        rRod_0(t)[1:3] = rRod_ia, [description="Position vector from frame_a to frame_b resolved in world frame"]
-        rRod_a(t)[1:3] = rRod_ia, [description="Position vector from frame_a to frame_b resolved in frame_a"]
-        (constraint_residue(t) = 0), [description="Constraint equation of joint in residue form: Either length constraint (= default) or equation to compute rod force (for analytic solution of loops in combination with Internal.RevoluteWithLengthConstraint/PrismaticWithLengthConstraint)"]
+        rRod_0(t)[1:3], [guess = rRod_ia, description="Position vector from frame_a to frame_b resolved in world frame"]
+        rRod_a(t)[1:3], [guess = rRod_ia, description="Position vector from frame_a to frame_b resolved in frame_a"]
+        (constraint_residue(t)), [guess = 0, description="Constraint equation of joint in residue form: Either length constraint (= default) or equation to compute rod force (for analytic solution of loops in combination with Internal.RevoluteWithLengthConstraint/PrismaticWithLengthConstraint)"]
         f_b_a(t)[1:3], [description="frame_b.f resolved in frame_a"]
         f_ia_a(t)[1:3], [description="frame_ia.f resolved in frame_a"]
         t_ia_a(t)[1:3], [description="frame_ia.t resolved in frame_a"]
         n2_a(t)[1:3], [description="Vector in direction of axis 2 of the universal joint (e2_ia), resolved in frame_a"]
-        (length2_n2_a(t) = 1), [description="Square of length of vector n2_a"]
+        (length2_n2_a(t)), [guess = 1, description="Square of length of vector n2_a"]
         length_n2_a(t), [description="Length of vector n2_a"]
         e2_a(t)[1:3], [description="Unit vector in direction of axis 2 of the universal joint (e2_ia), resolved in frame_a"]
         e3_a(t)[1:3], [description="Unit vector perpendicular to eRod_ia and e2_a, resolved in frame_a"]
@@ -366,14 +358,9 @@ This joint aggregation can be used in cases where in reality a rod with spherica
         # R_rel_ia(t), [description="Rotation from frame_a to frame_ia"]
     end
 
-    n1_a, rRod_ia = collect.((n1_a, rRod_ia))
-
     eRod_ia = normalize(rRod_ia)
     e2_ia = cross(n1_a, eRod_ia)
     e3_ia = cross(eRod_ia, e2_ia)
-    # rodLength = _norm(rRod_ia)
-
-    eRod_ia,e2_ia,e3_ia,f_b_a1,eRod_a,rRod_0,rRod_a,f_b_a,f_ia_a,t_ia_a,n2_a,e2_a,e3_a,der_rRod_a_L,w_rel_ia1 = collect.((eRod_ia,e2_ia,e3_ia,f_b_a1,eRod_a,rRod_0,rRod_a,f_b_a,f_ia_a,t_ia_a,n2_a,e2_a,e3_a,der_rRod_a_L,w_rel_ia1))
 
 
     R_rel_ia1 = RotationMatrix(transpose([eRod_a e2_a e3_a]), w_rel_ia1)
@@ -389,55 +376,54 @@ This joint aggregation can be used in cases where in reality a rod with spherica
     eqs = [
 
         if kinematic_constraint
-            rRod_0 .~ ori(frame_b).R.mat'*(ori(frame_b).R.mat*collect(frame_b.r_0)) - Ra.R.mat'*(Ra.R.mat*collect(frame_a.r_0))
+            rRod_0 ~ ori(frame_b).R'*(ori(frame_b).R*frame_b.r_0) - Ra.R'*(Ra.R*frame_a.r_0)
         else
-            rRod_0 .~ frame_b.r_0 - frame_a.r_0
+            rRod_0 ~ frame_b.r_0 - frame_a.r_0
         end
 
-        rRod_a .~ resolve2(Ra, rRod_0)
+        rRod_a ~ resolve2(Ra, rRod_0)
 
         constraint_residue ~ 0
 
-        eRod_a .~ rRod_a/rodLength
-        n2_a .~ cross(n1_a, eRod_a)
-        length2_n2_a ~ n2_a'n2_a
+        eRod_a ~ rRod_a/rodLength
+        n2_a ~ cross(n1_a, eRod_a)
+        length2_n2_a ~ dot(n2_a,n2_a)
 
         # assert(length2_n2_a > 1e-10, "A MultiBody.Joints.UniversalSpherical joint (consisting of a universal joint and a spherical joint connected together by a rigid rod) is in the singular configuration of the universal joint. This means that axis 1 of the universal joint defined via parameter \"n1_a\" is parallel to vector \"rRod_ia\" that is directed from the origin of frame_a to the origin of frame_b. You may try to use another \"n1_a\" vector. If this fails, use instead MultiBody.Joints.SphericalSpherical, if this is possible, because this joint aggregation does not have a singular configuration.")
 
         length_n2_a ~ sqrt(length2_n2_a)
-        e2_a .~ n2_a/length_n2_a
-        e3_a .~ cross(eRod_a, e2_a)
+        e2_a ~ n2_a/length_n2_a
+        e3_a ~ cross(eRod_a, e2_a)
 
-        der_rRod_a_L .~ (resolve2(Ra, D.(rRod_0)) - cross(Ra.w, rRod_a))/rodLength
-        w_rel_ia1 .~ [e3_a'cross(n1_a, der_rRod_a_L)/length_n2_a, -(e3_a'der_rRod_a_L), e2_a'der_rRod_a_L]
+        der_rRod_a_L ~ (resolve2(Ra, D(rRod_0)) - cross(Ra.w, rRod_a))/rodLength
+        w_rel_ia1 ~ [e3_a'cross(n1_a, der_rRod_a_L)/length_n2_a, -dot(e3_a,der_rRod_a_L), dot(e2_a,der_rRod_a_L)]
 
         # R_rel_ia ~ Rrelia# absolute_rotation(R_rel_ia1, R_rel_ia2)
         # R_rel_ia.w ~ Rrelia.w
 
-        frame_ia.r_0 .~ frame_a.r_0
+        frame_ia.r_0 ~ frame_a.r_0
         ori(frame_ia) ~ Ria # absolute_rotation(frame_a, R_rel_ia)
-        # ori(frame_ia).w .~ Ria.w
+        # ori(frame_ia).w ~ Ria.w
 
-        f_ia_a .~ resolve1(R_rel_ia, frame_ia.f)
-        t_ia_a .~ resolve1(R_rel_ia, frame_ia.tau)
+        f_ia_a ~ resolve1(R_rel_ia, frame_ia.f)
+        t_ia_a ~ resolve1(R_rel_ia, frame_ia.tau)
 
-        f_b_a1 .~ -e2_a*((n1_a't_ia_a)/(rodLength*(n1_a'e3_a))) + e3_a*((e2_a't_ia_a)/rodLength)
-        f_b_a .~ -f_rod*eRod_a + f_b_a1
-        frame_b.f .~ resolve_relative(f_b_a, Ra, ori(frame_b))
-        frame_b.tau .~ 0
-        0 .~ collect(frame_a.f) + f_b_a + f_ia_a
-        0 .~ collect(frame_a.tau) + t_ia_a + cross(rRod_a, f_b_a)
+        f_b_a1 ~ -e2_a*(dot(n1_a,t_ia_a)/(rodLength*dot(n1_a,e3_a))) + collect(e3_a)*(dot(e2_a,t_ia_a)/rodLength)
+        f_b_a ~ -f_rod*eRod_a + f_b_a1
+        frame_b.f ~ resolve_relative(f_b_a, Ra, ori(frame_b))
+        frame_b.tau ~ zeros(3)
+        zeros(3) ~ frame_a.f + f_b_a + f_ia_a
+        zeros(3) ~ frame_a.tau + t_ia_a + cross(rRod_a, f_b_a)
     ]
 
     if residue === nothing
-        push!(eqs, constraint_residue ~ rRod_0'rRod_0 - rodLength'rodLength)
+        push!(eqs, constraint_residue ~ dot(rRod_0,rRod_0) - dot(rodLength,rodLength))
     else
         # See implementation of JointUSR for how to use the constraint_residue=:external
         residue === :external || error("Unknown value for constraint_residue, expected nothing or :external")
     end
 
-    sys = ODESystem(eqs, t; name=:nothing, systems)
-    add_params(sys, pars; name)
+    sys = System(eqs, t, vars, pars; name, systems)
 end
 
 
@@ -451,35 +437,31 @@ end
         position_a = RealInput(nin=3) # Position vector from frame_a to frame_a side of length constraint, resolved in frame_a of revolute joint
         position_b = RealInput(nin=3)
     end
-    @parameters e[1:3] = _normalize(n) [description = "normalized axis of rotation"]
-    e = collect(e)
     # @parameters n[1:3]=n [description = "axis of rotation"] # Can't have this as parameter since e = _normalize(n) does not work :/
-    @parameters phi_offset = phi_offset, [description = "offset of the joint in animations"]
-    @parameters length_constraint = length_constraint, [description = "Fixed length of length constraint"]
     pars = @parameters begin
+        e[1:3] = _normalize(n), [description = "normalized axis of rotation"]
+        phi_offset = phi_offset, [description = "offset of the joint in animations"]
+        length_constraint = length_constraint, [description = "Fixed length of length constraint"]
         radius = radius, [description = "radius of the joint in animations"]
         length = length, [description = "length of the joint in animations"]
         color[1:4] = color, [description = "color of the joint in animations (RGBA)"]
     end
-    @variables tau(t)=0 [
-        connect = Flow,
-        description = "Driving torque in direction of axis of rotation",
-    ]
-    @variables phi(t) [
-        state_priority = 1,
-        description = "Relative rotation angle from frame_a to frame_b",
-    ]
-    @variables angle(t) [
-        state_priority = -1,
-        description = "= phi + phi_offset (relative rotation angle between frame_a and frame_b)",
-    ]
-    @variables r_a(t)[1:3], [description = "Position vector from frame_a to frame_a side of length constraint, resolved in frame_a of revolute joint"]
-    @variables r_b(t)[1:3], [description = "Position vector from frame_b to frame_b side of length constraint, resolved in frame_b of revolute joint"]
-
-    n, r_a, r_b = collect.((n, r_a, r_b))
-
-    # vars = [tau; phi; angle; r_a; r_b]
-    # pars = [collect(e); phi_offset; length_constraint]
+    vars = @variables begin
+        tau(t), [
+            connect = Flow,
+            description = "Driving torque in direction of axis of rotation",
+        ]
+        phi(t), [
+            state_priority = 1,
+            description = "Relative rotation angle from frame_a to frame_b",
+        ]
+        angle(t), [
+            state_priority = -1,
+            description = "= phi + phi_offset (relative rotation angle between frame_a and frame_b)",
+        ]
+        r_a(t)[1:3], [description = "Position vector from frame_a to frame_a side of length constraint, resolved in frame_a of revolute joint"]
+        r_b(t)[1:3], [description = "Position vector from frame_b to frame_b side of length constraint, resolved in frame_b of revolute joint"]
+    end
 
     # @parameters positive_branch::Bool=false
     # NOTE: final parameters in modelica can be implemented by parameter_dependencies = [final_parameter => expression with other parameters]
@@ -487,39 +469,37 @@ end
     Rrel = planar_rotation(e, angle, D(angle))
     Rb = absolute_rotation(ori(frame_a), Rrel)
 
-    IR = JuliaSimCompiler
-    e_array = IR.make_array((3,), e...)
-    r_a_array = IR.make_array((3,), r_a...)
-    r_b_array = IR.make_array((3,), r_b...)
+    # IR = JuliaSimCompiler
+    # e_array = IR.make_array((3,), e...)
+    # r_a_array = IR.make_array((3,), r_a...)
+    # r_b_array = IR.make_array((3,), r_b...)
 
     eqs = [
-        collect(r_a) .~ collect(position_a.u)
-        collect(r_b) .~ collect(position_b.u)
+        r_a ~ position_a.u
+        r_b ~ position_b.u
 
         axis.tau ~ tau
         axis.phi ~ phi
         bearing.phi ~ 0
         angle ~ phi + phi_offset
-        collect(frame_b.r_0) .~ collect(frame_a.r_0)
+        frame_b.r_0 ~ frame_a.r_0
 
         ori(frame_b) ~ Rb
-        # ori(frame_b).w .~ Rb.w
+        # ori(frame_b).w ~ Rb.w
 
-        0 .~ collect(frame_a.f .+ resolve1(Rrel, frame_b.f))
-        0 .~ collect(frame_a.tau .+ resolve1(Rrel, frame_b.tau))
+        zeros(3) ~ frame_a.f + resolve1(Rrel, frame_b.f)
+        zeros(3) ~ frame_a.tau + resolve1(Rrel, frame_b.tau)
 
         if use_arrays
-            angle ~ compute_angle2(length_constraint, e_array, r_a_array, r_b_array, positive_branch)[1]
-            # angle ~ Symbolics.term(compute_angle2, length_constraint, e_array, r_a_array, r_b_array, positive_branch, type=Real)
+            angle ~ compute_angle2(length_constraint, e, r_a, r_b, positive_branch)[1]
+            # angle ~ Symbolics.term(compute_angle2, length_constraint, e, r_a, r_b, positive_branch, type=Real)
         else
             # angle ~ Symbolics.term(compute_angle, length_constraint, e..., r_a..., r_b..., positive_branch, type=Real)
             angle ~ compute_angle(length_constraint, e, r_a, r_b, positive_branch)
         end
     ]
 
-    sys = ODESystem(eqs, t; name=:nothing, systems)#, parameter_dependencies = [positive_branch => select_branch(length_constraint, e, phi_offset + phi_guess, r_a, r_b)])  # JuliaSimCompiler ignores parameter dependencies, the user has to provide it instead
-    
-    add_params(sys, pars; name)
+    System(eqs, t, vars, pars; name, systems)#, parameter_dependencies = [positive_branch => select_branch(length_constraint, e, phi_offset + phi_guess, r_a, r_b)])  # JuliaSimCompiler ignores parameter dependencies, the user has to provide it instead
 end
 
 
@@ -586,7 +566,7 @@ The rest of this joint aggregation is defined by the following parameters:
         bearing = Rotational.Flange()
     end
 
-    @parameters begin
+    pars = @parameters begin
         # n1_a[1:3] = n1_a, [description = "Axis 1 of universal joint fixed and resolved in frame_a (axis 2 is orthogonal to axis 1 and to rod 1)"]
         # n_b[1:3] = n_b, [description = "Axis of revolute joint fixed and resolved in frame_b"]
         rRod1_ia[1:3] = rRod1_ia, [description = "Vector from origin of frame_a to spherical joint, resolved in frame_ia"]
@@ -596,10 +576,9 @@ The rest of this joint aggregation is defined by the following parameters:
         # render = render, [description = "Whether or not to render the joint in animations"]
     end
 
-    n1_a, n_b, rRod1_ia, rRod2_ib = collect.((n1_a, n_b, rRod1_ia, rRod2_ib))
 
 
-    @variables begin
+    vars = @variables begin
         aux(t), [description = "Denominator used to compute force in rod connecting universal and spherical joint"]
         f_rod(t), [description = "Constraint force in direction of the rod (positive, if rod is pressed)"]
     end
@@ -638,14 +617,13 @@ The rest of this joint aggregation is defined by the following parameters:
     )
     push!(more_systems, revolute)
 
-    re = collect(revolute.e)
     eqs = [
-        aux ~ cross(re, rRod2_ib)'resolve_relative(rod1.eRod_a, ori(rod1.frame_a), ori(rod1.frame_b))
+        aux ~ cross(revolute.e, rRod2_ib)'resolve_relative(rod1.eRod_a, ori(rod1.frame_a), ori(rod1.frame_b))
         f_rod ~ (
-            -revolute.tau - re'*collect(frame_ib.tau + frame_im.tau + 
+            -revolute.tau - dot(revolute.e, (frame_ib.tau + frame_im.tau +
                 cross(rRod2_ib, frame_im.f) -
                 cross(rRod2_ib, resolve_relative(rod1.f_b_a1, ori(rod1.frame_a), ori(rod1.frame_b)))
-            )
+            ))
         )/max(abs(aux), 1e-10)
 
         rod1.constraint_residue ~ rod1.f_rod - f_rod # Externally provided residue
@@ -663,22 +641,29 @@ The rest of this joint aggregation is defined by the following parameters:
         connect(relative_position.r_rel, revolute.position_a)
         connect(revolute.bearing, bearing)
     ]
-    ODESystem(eqs, t; name, systems=[systems; more_systems])
+    System(eqs, t, vars, pars; name, systems=[systems; more_systems])
 
 end
 
-@mtkmodel Constant3 begin
-    @components begin
+@component function Constant3(; name, k = zeros(3))
+    pars = @parameters begin
+        k[1:3] = k, [description = "Constant output value of block"]
+    end
+
+    systems = @named begin
         output = Blocks.RealOutput(nout=3)
     end
-    @parameters begin
-        k[1:3] = zeros(3), [description = "Constant output value of block"]
+
+    vars = @variables begin
     end
-    @equations begin
+
+    equations = Equation[
         output.u[1] ~ k[1]
         output.u[2] ~ k[2]
         output.u[3] ~ k[3]
-    end
+    ]
+
+    return System(equations, t, vars, pars; name, systems)
 end
 
 """
@@ -731,7 +716,7 @@ Basically, the JointRRR model internally consists of a universal-spherical-revol
     kwargs...
 )
 
-    @parameters begin
+    pars = @parameters begin
         # n_a[1:3] = n_a, [description = "Axes of revolute joints resolved in frame_a (all axes are parallel to each other)"]
         # n_b[1:3] = n_b, [description = "Axis of revolute joint fixed and resolved in frame_b"]
         rRod1_ia[1:3] = rRod1_ia, [description = "Vector from origin of frame_a to revolute joint in the middle, resolved in frame_ia"]
@@ -774,7 +759,7 @@ Basically, the JointRRR model internally consists of a universal-spherical-revol
         connect(jointUSR.bearing, bearing)
     ]
 
-    ODESystem(eqs, t; name, systems)
+    System(eqs, t, [], pars; name, systems)
 end
 
 

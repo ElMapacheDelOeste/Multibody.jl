@@ -4,6 +4,7 @@ Library to model planar mechanical multi-body systems inspired by https://github
 
 module PlanarMechanics
 
+using LinearAlgebra
 import ModelingToolkitStandardLibrary.Mechanical.Rotational
 import ModelingToolkitStandardLibrary.Mechanical.TranslationalModelica
 import ModelingToolkitStandardLibrary.Blocks
@@ -17,7 +18,7 @@ export Frame, FrameResolve, PartialTwoFrames, ZeroPosition, ori_2d
 include("utils.jl")
 
 export Fixed, Body, BodyShape, FixedTranslation, Spring, Damper, SpringDamper
-export SlipBasedWheelJoint, SimpleWheel, IdealPlanetary, DifferentialGear
+export SlipBasedWheelJoint, SimpleWheel, IdealPlanetary, DifferentialGear, OneDOFSlippingWheelJoint, OneDOFRollingWheelJoint
 include("components.jl")
 
 export Revolute, Prismatic
@@ -27,4 +28,8 @@ export AbsolutePosition,
        RelativePosition, AbsoluteVelocity, RelativeVelocity, AbsoluteAcceleration,
        RelativeAcceleration, connect_sensor
 include("sensors.jl")
+
+
+export WorldForceTorque
+include("sources.jl")
 end

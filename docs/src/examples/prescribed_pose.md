@@ -25,7 +25,7 @@ using ModelingToolkit
 using Plots
 using OrdinaryDiffEq
 using LinearAlgebra
-using JuliaSimCompiler
+# using JuliaSimCompiler
 using Test
 
 t = Multibody.t
@@ -41,45 +41,42 @@ BP = 129.03 / 1000
 DE = 310.31 / 1000
 t5 = 19.84 |> deg2rad
 
-@mtkmodel QuarterCarSuspension begin
-    @structural_parameters begin
-        spring = true
-        (jc = [0.5, 0.5, 0.5, 0.7])#, [description = "Joint color"]
-        mirror = false
+@component function QuarterCarSuspension(; name, spring = true, jc = [0.5, 0.5, 0.5, 0.7], mirror = false,
+    cs = 4000, ks = 44000, rod_radius = 0.02, jr = 0.03)
+    dir = mirror ? -1 : 1
+    rRod1_ia = AB*normalize([0, -0.1, 0.2dir])
+    rRod2_ib = BC*normalize([0, 0.2, 0dir])
+
+    pars = @parameters begin
+        cs = cs, [description = "Damping constant [Ns/m]"]
+        ks = ks, [description = "Spring constant [N/m]"]
+        rod_radius = rod_radius
+        jr = jr, [description = "Radius of revolute joint"]
     end
-    @parameters begin
-        cs = 4000, [description = "Damping constant [Ns/m]"]
-        ks = 44000, [description = "Spring constant [N/m]"]
-        rod_radius = 0.02
-        jr = 0.03, [description = "Radius of revolute joint"]
-    end
-    begin
-        dir = mirror ? -1 : 1
-        rRod1_ia = AB*normalize([0, -0.1, 0.2dir])
-        rRod2_ib = BC*normalize([0, 0.2, 0dir])
-    end
-    @components begin
+    systems = @named begin
         r123 = JointRRR(n_a = n*dir, n_b = n*dir, rRod1_ia, rRod2_ib, rod_radius=0.018, rod_color=jc)
         r2 = Revolute(; n=n*dir, radius=jr, color=jc)
         b1 = FixedTranslation(radius = rod_radius, r = CD*normalize([0, -0.1, 0.3dir])) # CD
         chassis = FixedTranslation(r = DA*normalize([0, 0.2, 0.2*sin(t5)*dir]), render=false)
         chassis_frame = Frame()
-        
-        if spring
-            springdamper = SpringDamperParallel(c = ks, d = cs, s_unstretched = 1.3*BC, radius=rod_radius, num_windings=10)
-        end
-        if spring
-            spring_mount_F = FixedTranslation(r = 0.7*CD*normalize([0, -0.1, 0.3dir]), render=false) 
-        end
-        if spring
-            spring_mount_E = FixedTranslation(r = 1.3DA*normalize([0, 0.2, 0.2*sin(t5)*dir]), render=true)
-        end
+
     end
-    begin
-        A = chassis.frame_b
-        D = chassis.frame_a
+        if spring
+            more_systems = @named begin 
+                springdamper = SpringDamperParallel(c = ks, d = cs, s_unstretched = 1.3*BC, radius=rod_radius, num_windings=10)
+                spring_mount_F = FixedTranslation(r = 0.7*CD*normalize([0, -0.1, 0.3dir]), render=false)
+                spring_mount_E = FixedTranslation(r = 1.3DA*normalize([0, 0.2, 0.2*sin(t5)*dir]), render=true)
+            end
+            systems = [systems; more_systems]
+        end
+
+    A = chassis.frame_b
+    D = chassis.frame_a
+
+    vars = @variables begin
     end
-    @equations begin
+
+    equations = Equation[
         # Main loop
         connect(A, r123.frame_a)
         connect(r123.frame_b, b1.frame_b)
@@ -87,22 +84,25 @@ t5 = 19.84 |> deg2rad
         connect(r2.frame_a, D)
 
         # Spring damper
-        if spring
+        (spring ? [
             connect(springdamper.frame_b, spring_mount_E.frame_b)
             connect(b1.frame_a, spring_mount_F.frame_a)
             connect(D, spring_mount_E.frame_a)
             connect(springdamper.frame_a, spring_mount_F.frame_b)
-        end
+        ] : [])...
 
         connect(chassis_frame, chassis.frame_a)
-    end
+    ]
+
+    return System(equations, t, vars, pars; name, systems)
 end
 
-@mtkmodel ExcitedWheelAssembly begin
-    @parameters begin
-        rod_radius = 0.02
+@component function ExcitedWheelAssembly(; name, rod_radius = 0.02)
+    pars = @parameters begin
+        rod_radius = rod_radius
     end
-    @components begin
+
+    systems = @named begin
         chassis_frame = Frame()
         suspension = QuarterCarSuspension(; rod_radius)
 
@@ -111,49 +111,59 @@ end
             m = 15,
             I_axis = 0.06,
             I_long = 0.12,
-            x0 = 0.0,
-            z0 = 0.0,
+            x = 0.0,
+            z = 0.0,
             der_angles = [0, 0, 0],
             iscut = true,
         )
-
     end
-    @equations begin
+
+    vars = @variables begin
+    end
+
+    equations = Equation[
         connect(wheel.frame_a, suspension.r123.frame_ib)
         connect(chassis_frame, suspension.chassis_frame)
-    end
+    ]
+
+    return System(equations, t, vars, pars; name, systems)
 end
 
 
-@mtkmodel SuspensionWithExcitationAndMass begin
-    @parameters begin
-        ms = 1500/4, [description = "Mass of the car [kg]"]
-        rod_radius = 0.02
+@component function SuspensionWithExcitationAndMass(; name, rod_radius = 0.02, ms=1500/4)
+    pars = @parameters begin
+        ms = ms, [description = "Mass of the car [kg]"]
+        rod_radius = rod_radius
     end
-    @components begin
+
+    systems = @named begin
         world = World()
         mass = Body(m=ms, r_cm = 0.5DA*normalize([0, 0.2, 0.2*sin(t5)]))
         excited_suspension = ExcitedWheelAssembly(; rod_radius)
         prescribed_motion = Pose(; r = [0, 0.1 + 0.1sin(t), 0], R = RotXYZ(0, 0.5sin(t), 0))
     end
-    @equations begin
-        connect(prescribed_motion.frame_b, excited_suspension.chassis_frame, mass.frame_a)
+
+    vars = @variables begin
     end
 
+    equations = Equation[
+        connect(prescribed_motion.frame_b, excited_suspension.chassis_frame, mass.frame_a)
+    ]
+
+    return System(equations, t, vars, pars; name, systems)
 end
 
 @named model = SuspensionWithExcitationAndMass()
-model = complete(model)
-ssys = structural_simplify(multibody(model))
+ssys = multibody(model)
 display([unknowns(ssys) diag(ssys.mass_matrix)])
 
 defs = [
-    model.excited_suspension.suspension.ks => 30*44000
-    model.excited_suspension.suspension.cs => 30*4000
-    model.excited_suspension.suspension.r2.phi => -0.6031*(1)
+    ssys.excited_suspension.suspension.ks => 30*44000
+    ssys.excited_suspension.suspension.cs => 30*4000
+    ssys.excited_suspension.suspension.r2.phi => -0.6031*(1)
 ]
 prob = ODEProblem(ssys, defs, (0, 2π))
-sol = solve(prob, Rodas5P(autodiff=false), initializealg = BrownFullBasicInit()) 
+sol = solve(prob, Rodas5P(autodiff=false)) 
 @test SciMLBase.successful_retcode(sol)
 Multibody.render(model, sol, show_axis=false, x=-0.8, y=0.7, z=0.1, lookat=[0,0.1,0.0], filename="prescribed_motion.gif") # Video
 nothing # hide

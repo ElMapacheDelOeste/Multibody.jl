@@ -1,7 +1,10 @@
 using Test
+using Multibody, ModelingToolkit, OrdinaryDiffEq
 import Multibody.Rotations.QuatRotation as Quat
 import Multibody.Rotations
 import Multibody.Rotations: RotXYZ
+t = Multibody.t
+D = Multibody.D
 function get_R(sol, frame, t)
     reshape(sol(t, idxs=vec(ori(frame).R.mat)), 3, 3)
 end
@@ -18,18 +21,16 @@ end
 using LinearAlgebra
 @testset "Harmonic oscillator with Body as root and quaternions as state variables" begin
 
-@named body = Body(; m = 1, isroot = true, r_cm = [0.0, 0, 0], phi0 = [0, 0.9, 0], quat=true) # This time the body isroot since there is no joint containing state
+@named body = Body(; m = 1, isroot = true, r_cm = [0.0, 0, 0], phi = [0, 0.9, 0], quat=true) # This time the body isroot since there is no joint containing state
 @named spring = Multibody.Spring(c = 1)
 
 connections = [connect(world.frame_b, spring.frame_a)
                connect(spring.frame_b, body.frame_a)]
 
-@named model = ODESystem(connections, t, systems = [world, spring, body])
-model = complete(model)
+@named model = System(connections, t, systems = [world, spring, body])
 # ssys = structural_simplify(model, allow_parameter = false)
 
-irsys = IRSystem(model)
-ssys = structural_simplify(irsys)
+ssys = multibody(model)
 @test length(unknowns(ssys)) == 13 # One extra due to quaternions
 D = Differential(t)
 
@@ -37,7 +38,7 @@ D = Differential(t)
 # @test all(isfinite, du)
 
 # prob = ODEProblem(ssys, ModelingToolkit.missing_variable_defaults(ssys), (0, 10))
-prob = ODEProblem(ssys, [collect(body.v_0 .=> [0, 0, 0]); collect(body.w_a .=> [0, 1, 0]); ], (0, 10))
+prob = ODEProblem(ssys, [collect(body.v_0 .=> [0, 0, 0]); collect(body.w_a .=> [0, 1, 0]); collect(body.Q̂ .=> [1, 0, 0, 0])], (0, 10))
 sol = solve(prob, Rodas5P(), u0 = prob.u0 .+ 1e-12 .* randn.())
 
 doplot() &&
@@ -68,7 +69,7 @@ end
 # ==============================================================================
 ## Simple motion with quaternions===============================================
 # ==============================================================================
-using LinearAlgebra, ModelingToolkit, Multibody, JuliaSimCompiler
+using LinearAlgebra, ModelingToolkit, Multibody
 using OrdinaryDiffEq, Test
 
 @testset "Simple motion with quaternions and state in Body" begin
@@ -87,10 +88,9 @@ connections = [connect(world.frame_b, joint.frame_a)
                connect(joint.frame_b, body.frame_a)]
 
 
-@named model = ODESystem(connections, t,
+@named model = System(connections, t,
                          systems = [world, joint, body])
-irsys = IRSystem(model)
-ssys = structural_simplify(irsys)
+ssys = multibody(model)
 
 D = Differential(t)
 prob = ODEProblem(ssys, [collect(body.w_a) .=> [1,0,0];], (0, 2pi))
@@ -145,7 +145,7 @@ end
 # ============================================================
 
 @testset "Quaternions and state in free motion" begin
-    using LinearAlgebra, ModelingToolkit, Multibody, JuliaSimCompiler
+    using LinearAlgebra, ModelingToolkit, Multibody
     t = Multibody.t
     world = Multibody.world
 
@@ -155,10 +155,9 @@ end
     connections = [connect(world.frame_b, joint.frame_a)
                 connect(joint.frame_b, body.frame_a)]
 
-    @named model = ODESystem(connections, t,
+    @named model = System(connections, t,
                             systems = [world, joint, body])
-    irsys = IRSystem(model)
-    ssys = structural_simplify(irsys)
+    ssys = multibody(model)
 
     D = Differential(t)
     # q0 = randn(4); q0 ./= norm(q0)
@@ -197,7 +196,7 @@ end
 # ============================================================
 
 # @testset "Spherical joint with quaternion state" begin
-    using LinearAlgebra, ModelingToolkit, Multibody, JuliaSimCompiler
+    using LinearAlgebra, ModelingToolkit, Multibody
     world = Multibody.world
 
 
@@ -213,10 +212,9 @@ end
                 connect(rod.frame_b, body.frame_a)]
 
 
-    @named model = ODESystem(connections, t,
+    @named model = System(connections, t,
                             systems = [world, joint, body, rod])
-    irsys = IRSystem(model)
-    ssys = structural_simplify(irsys)
+    ssys = multibody(model)
 
 
     isdefined(Main, :D) || (D = Differential(t))
@@ -261,7 +259,7 @@ end
 using Multibody
 using ModelingToolkit
 # using Plots
-using JuliaSimCompiler
+# using JuliaSimCompiler
 using OrdinaryDiffEq
 using Multibody.Rotations: params
 
@@ -284,7 +282,7 @@ using Multibody.Rotations: params
         connect(spring1.frame_a, world.frame_b)
         connect(body.frame_b, spring2.frame_b)]
 
-    @named model = ODESystem(eqs, t,
+    @named model = System(eqs, t,
                             systems = [
                                 world,
                                 body,
@@ -292,7 +290,7 @@ using Multibody.Rotations: params
                                 spring1,
                                 spring2,
                             ])
-    ssys = structural_simplify(IRSystem(model))#, alias_eliminate = true)
+    ssys = multibody(model)
     # ssys = structural_simplify(model, allow_parameters = false)
     prob = ODEProblem(ssys,
                     [world.g => 9.80665;

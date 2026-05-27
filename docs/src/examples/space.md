@@ -18,15 +18,17 @@ In this example, we set ``\mu = 1``, `point_gravity = true` and let two masses o
 using Multibody
 using ModelingToolkit
 using Plots
-using JuliaSimCompiler
 using OrdinaryDiffEq
 
 t = Multibody.t
 D = Differential(t)
 
-@mtkmodel PointGrav begin
-    @components begin
-        world = World()
+@component function PointGrav(; name)
+    pars = @parameters begin
+    end
+
+    systems = @named begin
+        world = World(mu = 1, point_gravity = true) # The gravity model is selected here
         body1 = Body(
             m=1,
             I_11=0.1,
@@ -46,19 +48,17 @@ D = Differential(t)
             # quat=true, # Activate to use quaternions as state instead of Euler angles
             v_0=[0.6,0,0])
     end
+
+
+    equations = Equation[]
+
+    return System(equations, t; name, systems)
 end
 @named model = PointGrav()
-model = complete(model)
-ssys = structural_simplify(multibody(model))
-defs = [
-    model.world.mu => 1
-    model.world.point_gravity => true # The gravity model is selected here
-    collect(model.body1.w_a) .=> 0
-    collect(model.body2.w_a) .=> 0
-    
-]
+ssys = multibody(model)
+defs = []
 prob = ODEProblem(ssys, defs, (0, 5))
-sol = solve(prob, Rodas4())
+sol = solve(prob, Rodas5P())
 plot(sol)
 ```
 
